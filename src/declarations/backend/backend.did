@@ -1,0 +1,5 @@
+type Result = variant { Ok : text; Err : text };
+service : {
+  ibe_decryption_key_for_caller_hex : (text) -> (Result);
+  ibe_public_key_hex : () -> (Result);
+}

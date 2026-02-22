@@ -1,0 +1,6 @@
+.DS_Store
+.env
+.dfx/
+node_modules/
+target/
+frontend/dist/
