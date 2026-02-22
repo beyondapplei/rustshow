@@ -1,5 +1,12 @@
 type Result = variant { Ok : text; Err : text };
 service : {
+  ecdsaPublicKeyExample : (text) -> (Result);
+  ecdsaSignMessageHashExample : (blob, text) -> (Result);
+  ecdsa_public_key_for_caller_hex : () -> (Result);
+  ecdsa_sign_hash_hex_for_caller : (text) -> (Result);
   ibe_decryption_key_for_caller_hex : (text) -> (Result);
   ibe_public_key_hex : () -> (Result);
+  vetkdCallerInputHex : () -> (text) query;
+  vetkdDeriveKeyExample : (blob, text, text) -> (Result);
+  vetkdPublicKeyExample : (text, text) -> (Result);
 }
