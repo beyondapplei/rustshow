@@ -1,4 +1,36 @@
 type Result = variant { Ok : text; Err : text };
+type Result_1 = variant { Ok : WalletOverviewOut; Err : text };
+type WalletBalanceItem = record {
+  decimals : nat;
+  ledgerPrincipalText : opt text;
+  tokenAddress : opt text;
+  name : text;
+  network : text;
+  error : opt text;
+  available : bool;
+  address : text;
+  amount : nat;
+  symbol : text;
+};
+type WalletNetworkInfo = record {
+  id : text;
+  kind : text;
+  name : text;
+  defaultRpcUrl : opt text;
+  primarySymbol : text;
+  supportsBalance : bool;
+  supportsSend : bool;
+};
+type WalletOverviewOut = record {
+  evmPublicKeyHex : opt text;
+  primaryAvailable : bool;
+  primaryAmount : nat;
+  callerPrincipalText : text;
+  primarySymbol : text;
+  selectedNetwork : text;
+  evmAddress : opt text;
+  balances : vec WalletBalanceItem;
+};
 service : {
   ecdsaPublicKeyExample : (text) -> (Result);
   ecdsaSignMessageHashExample : (blob, text) -> (Result);
@@ -9,4 +41,6 @@ service : {
   vetkdCallerInputHex : () -> (text) query;
   vetkdDeriveKeyExample : (blob, text, text) -> (Result);
   vetkdPublicKeyExample : (text, text) -> (Result);
+  wallet_networks : () -> (vec WalletNetworkInfo) query;
+  wallet_overview : (text, opt text, opt text) -> (Result_1);
 }

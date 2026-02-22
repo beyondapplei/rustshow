@@ -36,6 +36,7 @@ const DEFAULT_ECDSA_KEY_NAME_IC = 'test_key_1';
 const CIPHER_PACKAGE_MAGIC = Uint8Array.from([0x56, 0x4b, 0x44, 0x01]); // "VKD" + version
 const FEATURE_VETKEYS_MESSENGER = 'vetkeys-messenger';
 const FEATURE_THRESHOLD_ECDSA = 'threshold-ecdsa';
+const FEATURE_MULTI_CHAIN_WALLET = 'ii-multi-chain-wallet';
 const FEATURE_BUTTONS = [
   {
     id: FEATURE_VETKEYS_MESSENGER,
@@ -45,6 +46,11 @@ const FEATURE_BUTTONS = [
   {
     id: FEATURE_THRESHOLD_ECDSA,
     name: 'Threshold ECDSA (ETH 验签)',
+    enabled: true
+  },
+  {
+    id: FEATURE_MULTI_CHAIN_WALLET,
+    name: 'II 多链钱包（演示）',
     enabled: true
   }
 ];
@@ -264,6 +270,28 @@ function findRecoveryIdForPublicKey(messageHash, compactSignatureBytes, expected
   throw new Error('无法从签名恢复出与 A 公钥匹配的 recovery id。');
 }
 
+function isWalletEvmChain(networkId) {
+  return networkId === 'eth' || networkId === 'sepolia' || networkId === 'base';
+}
+
+function shortText(value, head = 10, tail = 8) {
+  const text = String(value ?? '');
+  if (!text) {
+    return '';
+  }
+  if (text.length <= head + tail + 3) {
+    return text;
+  }
+  return `${text.slice(0, head)}...${text.slice(-tail)}`;
+}
+
+function unwrapOpt(value) {
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value[0] : null;
+  }
+  return value ?? null;
+}
+
 function isLocalBackendTarget(host) {
   const value = (host || '').trim();
   if (!value || value === '/api') {
@@ -349,9 +377,14 @@ export default function App() {
   const [ecdsaVerifyEthAddress, setEcdsaVerifyEthAddress] = useState('');
   const [ecdsaVerifyResult, setEcdsaVerifyResult] = useState('');
 
+  const [walletNetworks, setWalletNetworks] = useState([]);
+  const [walletChainId, setWalletChainId] = useState('eth');
+  const [walletOverview, setWalletOverview] = useState(null);
+  const [walletOverviewError, setWalletOverviewError] = useState('');
+
   const [busy, setBusy] = useState('');
   const [events, setEvents] = useState([
-    { id: 1, kind: 'info', time: nowLabel(), text: '仅保留 VetKeys A/B 加密解密流程。' }
+    { id: 1, kind: 'info', time: nowLabel(), text: '已集成 VetKeys、Threshold ECDSA 与钱包演示功能。' }
   ]);
 
   function pushEvent(kind, text) {
@@ -454,6 +487,14 @@ export default function App() {
     return action(actor, identity);
   }
 
+  async function withAnonymousActor(action) {
+    const actor = await getBackendActor({
+      canisterId: backendCanisterId,
+      host: backendHost
+    });
+    return action(actor);
+  }
+
   async function refreshIdentityState(client) {
     const authenticated = await client.isAuthenticated();
     setIsAuthenticated(authenticated);
@@ -490,6 +531,79 @@ export default function App() {
       pushEvent('ok', '已退出登录。');
     });
   }
+
+  async function loadWalletNetworks() {
+    const networks = await withAnonymousActor(async (backend) => {
+      if (typeof backend.wallet_networks !== 'function') {
+        throw new Error('当前后端未暴露 wallet_networks（请重新部署 backend）。');
+      }
+      return backend.wallet_networks();
+    });
+    setWalletNetworks(Array.isArray(networks) ? networks : []);
+    setWalletChainId((prev) => {
+      if (Array.isArray(networks) && networks.some((item) => item.id === prev)) {
+        return prev;
+      }
+      return Array.isArray(networks) && networks[0]?.id ? networks[0].id : 'eth';
+    });
+    return networks;
+  }
+
+  async function refreshWalletOverview(targetChainId = walletChainId) {
+    if (!targetChainId) {
+      setWalletOverview(null);
+      setWalletOverviewError('');
+      return;
+    }
+    if (!isAuthenticated) {
+      setWalletOverview(null);
+      setWalletOverviewError('请先登录 II 后查看钱包总览。');
+      return;
+    }
+
+    await runAction('钱包总览', async () => {
+      const result = await withActor(async (backend) => {
+        if (typeof backend.wallet_overview !== 'function') {
+          throw new Error('当前后端未暴露 wallet_overview（请重新部署 backend）。');
+        }
+        return unwrapResult(await backend.wallet_overview(targetChainId, [], []));
+      });
+      setWalletOverview(result);
+      setWalletOverviewError('');
+      pushEvent('ok', `钱包总览已刷新：${targetChainId}`);
+    });
+  }
+
+  useEffect(() => {
+    if (activeFeatureId !== FEATURE_MULTI_CHAIN_WALLET) {
+      return;
+    }
+    loadWalletNetworks().catch((error) => {
+      setWalletNetworks([]);
+      setWalletOverview(null);
+      setWalletOverviewError(errorMessage(error));
+      pushEvent('error', `加载钱包网络列表失败：${errorMessage(error)}`);
+    });
+  }, [activeFeatureId, backendCanisterId, backendHost]);
+
+  useEffect(() => {
+    if (activeFeatureId !== FEATURE_MULTI_CHAIN_WALLET) {
+      return;
+    }
+    if (!walletChainId) {
+      return;
+    }
+    if (!isAuthenticated) {
+      setWalletOverview(null);
+      setWalletOverviewError('请先登录 II 后查看钱包总览。');
+      return;
+    }
+    refreshWalletOverview(walletChainId).catch((error) => {
+      setWalletOverview(null);
+      setWalletOverviewError(errorMessage(error));
+      pushEvent('error', `读取钱包总览失败：${errorMessage(error)}`);
+    });
+  }, [activeFeatureId, walletChainId, isAuthenticated, principalText]);
 
   async function onEncryptForB() {
     await runAction('A 端加密', async () => {
@@ -690,6 +804,26 @@ export default function App() {
     });
   }
 
+  const walletActiveNetwork =
+    walletNetworks.find((network) => network.id === walletChainId) ?? walletNetworks[0] ?? null;
+  const walletOverviewPublicKeyHex = unwrapOpt(walletOverview?.evmPublicKeyHex) || '';
+  const walletOverviewAddress = unwrapOpt(walletOverview?.evmAddress) || '';
+  const walletDefaultRpcUrl = unwrapOpt(walletActiveNetwork?.defaultRpcUrl) || '';
+  const walletOverviewDerivedAddress =
+    walletOverviewAddress ||
+    (walletOverviewPublicKeyHex && isWalletEvmChain(walletOverview?.selectedNetwork)
+      ? (() => {
+          try {
+            return secp256k1CompressedPublicKeyToEthAddress(hexToBytes(walletOverviewPublicKeyHex));
+          } catch {
+            return '';
+          }
+        })()
+      : '');
+  const walletPrimaryAmountDisplay = walletOverview?.primaryAvailable
+    ? `${walletOverview.primaryAmount} ${walletOverview.primarySymbol || ''}`.trim()
+    : '未接入';
+
   return (
     <>
       {!activeFeatureId ? (
@@ -724,6 +858,8 @@ export default function App() {
                 ? 'VetKeys 私密消息'
                 : activeFeatureId === FEATURE_THRESHOLD_ECDSA
                   ? 'Threshold ECDSA (ETH 验签)'
+                  : activeFeatureId === FEATURE_MULTI_CHAIN_WALLET
+                    ? 'II 多链钱包（演示）'
                   : '功能'}
             </span>
           </div>
@@ -954,6 +1090,174 @@ export default function App() {
                       <span className="output-label">Verify Result</span>
                       <code>{ecdsaVerifyResult || '尚未验签'}</code>
                     </div>
+                  </section>
+
+                  <section className="card card-wide reveal reveal-4">
+                    <h2>事件流</h2>
+                    <p className="card-help">最近操作和错误信息。</p>
+                    <ul className="event-list">
+                      {events.map((event) => (
+                        <li key={event.id} className={`event-item event-${event.kind}`}>
+                          <span className="event-time">{event.time}</span>
+                          <span>{event.text}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                </main>
+              </div>
+            ) : activeFeatureId === FEATURE_MULTI_CHAIN_WALLET ? (
+              <div className="app-shell">
+                <header className="hero reveal reveal-1">
+                  <p className="eyebrow">II MULTI-CHAIN WALLET SHOWCASE</p>
+                  <h1>RustShow Wallet</h1>
+                  <p className="subtitle">
+                    对齐 motokoshow 的钱包首页能力：链切换 + 钱包总览（当前重点接入 EVM 链钥公钥读取）
+                  </p>
+                  <div className="chip-row">
+                    <span className="chip">Internet Identity</span>
+                    <span className="chip">Multi-Chain Wallet UI</span>
+                    <span className="chip">Chain-Key ECDSA</span>
+                  </div>
+                </header>
+
+                <section className="status-panel reveal reveal-2">
+                  <span className={`status-dot${busy ? ' is-busy' : ''}`} />
+                  <span>
+                    {busy
+                      ? `执行中：${busy}`
+                      : isAuthenticated
+                        ? `II 已登录：${principalText}`
+                        : 'II 未登录'}
+                  </span>
+                </section>
+
+                <main className="grid">
+                  <section className="card card-wide reveal reveal-2 login-only-card">
+                    <div className="button-row">
+                      <button
+                        type="button"
+                        onClick={isAuthenticated ? onLogout : onLogin}
+                        disabled={Boolean(busy)}
+                        className={isAuthenticated ? 'button-secondary' : undefined}
+                      >
+                        {isAuthenticated ? 'II 登出' : 'II 登录'}
+                      </button>
+                    </div>
+                  </section>
+
+                  <section className="card reveal reveal-3">
+                    <h2>链选择</h2>
+                    <p className="card-help">后端 `wallet_networks` 返回的钱包网络列表（对齐 motokoshow）。</p>
+                    <div className="field">
+                      <label htmlFor="walletChainId">网络</label>
+                      <select
+                        id="walletChainId"
+                        value={walletChainId}
+                        onChange={(event) => {
+                          setWalletChainId(event.target.value);
+                          setWalletOverviewError('');
+                        }}
+                        disabled={Boolean(busy) || walletNetworks.length === 0}
+                      >
+                        {walletNetworks.length === 0 ? (
+                          <option value="">暂无网络（请刷新）</option>
+                        ) : (
+                          walletNetworks.map((network) => (
+                            <option key={network.id} value={network.id}>
+                              {network.name} ({network.id})
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+                    <div className="button-row">
+                      <button
+                        type="button"
+                        onClick={() => void loadWalletNetworks()}
+                        disabled={Boolean(busy)}
+                      >
+                        刷新网络列表
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void refreshWalletOverview(walletChainId)}
+                        disabled={Boolean(busy) || !walletChainId}
+                      >
+                        刷新钱包总览
+                      </button>
+                    </div>
+                    <ul className="kv-list">
+                      <li>
+                        <span>当前链</span>
+                        <code>{walletActiveNetwork ? `${walletActiveNetwork.name} (${walletActiveNetwork.id})` : '-'}</code>
+                      </li>
+                      <li>
+                        <span>类型</span>
+                        <code>{walletActiveNetwork?.kind || '-'}</code>
+                      </li>
+                      <li>
+                        <span>主资产</span>
+                        <code>{walletActiveNetwork?.primarySymbol || '-'}</code>
+                      </li>
+                      <li>
+                        <span>默认 RPC</span>
+                        <code>{walletDefaultRpcUrl || '-'}</code>
+                      </li>
+                    </ul>
+                  </section>
+
+                  <section className="card reveal reveal-4">
+                    <h2>钱包总览</h2>
+                    <p className="card-help">
+                      `wallet_overview` 返回当前 caller 的链上钱包基础信息。当前优先接入 EVM 链公钥读取。
+                    </p>
+                    <div className="output">
+                      <span className="output-label">Caller Principal</span>
+                      <code>{walletOverview?.callerPrincipalText || principalText || '未登录'}</code>
+                    </div>
+                    <div className="output">
+                      <span className="output-label">Selected Network</span>
+                      <code>{walletOverview?.selectedNetwork || walletChainId || '-'}</code>
+                    </div>
+                    <div className="output">
+                      <span className="output-label">Wallet Address</span>
+                      <code>{walletOverviewDerivedAddress || '当前链未接入地址生成'}</code>
+                    </div>
+                    <div className="output">
+                      <span className="output-label">Primary Balance</span>
+                      <code>{walletPrimaryAmountDisplay}</code>
+                    </div>
+                    <div className="output">
+                      <span className="output-label">Public Key (Hex)</span>
+                      <code>{walletOverviewPublicKeyHex || '当前链未返回公钥'}</code>
+                    </div>
+                    <div className="output">
+                      <span className="output-label">Overview Error</span>
+                      <code>{walletOverviewError || '无'}</code>
+                    </div>
+                  </section>
+
+                  <section className="card card-wide reveal reveal-4">
+                    <h2>功能说明（钱包）</h2>
+                    <p className="card-help">
+                      当前为 Rust 版钱包首页演示：支持多链列表与钱包总览结构；EVM 链（ETH/Sepolia/Base）展示链钥公钥，
+                      地址由前端根据 secp256k1 公钥推导。发送/余额/多资产明细留作下一步接入。
+                    </p>
+                    <ul className="kv-list">
+                      <li>
+                        <span>支持网络数量</span>
+                        <code>{walletNetworks.length}</code>
+                      </li>
+                      <li>
+                        <span>EVM 地址推导</span>
+                        <code>{walletOverviewDerivedAddress ? shortText(walletOverviewDerivedAddress) : '未生成'}</code>
+                      </li>
+                      <li>
+                        <span>后端方法</span>
+                        <code>wallet_networks / wallet_overview</code>
+                      </li>
+                    </ul>
                   </section>
 
                   <section className="card card-wide reveal reveal-4">

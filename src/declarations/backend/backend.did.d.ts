@@ -4,6 +4,39 @@ import type { IDL } from '@dfinity/candid';
 
 export type Result = { 'Ok' : string } |
   { 'Err' : string };
+export interface WalletBalanceItem {
+  'decimals' : bigint,
+  'ledgerPrincipalText' : [] | [string],
+  'tokenAddress' : [] | [string],
+  'name' : string,
+  'network' : string,
+  'error' : [] | [string],
+  'available' : boolean,
+  'address' : string,
+  'amount' : bigint,
+  'symbol' : string,
+}
+export interface WalletNetworkInfo {
+  'id' : string,
+  'kind' : string,
+  'name' : string,
+  'defaultRpcUrl' : [] | [string],
+  'primarySymbol' : string,
+  'supportsBalance' : boolean,
+  'supportsSend' : boolean,
+}
+export interface WalletOverviewOut {
+  'evmPublicKeyHex' : [] | [string],
+  'primaryAvailable' : boolean,
+  'primaryAmount' : bigint,
+  'callerPrincipalText' : string,
+  'primarySymbol' : string,
+  'selectedNetwork' : string,
+  'evmAddress' : [] | [string],
+  'balances' : Array<WalletBalanceItem>,
+}
+export type WalletOverviewResult = { 'Ok' : WalletOverviewOut } |
+  { 'Err' : string };
 export interface _SERVICE {
   'ecdsaPublicKeyExample' : ActorMethod<[string], Result>,
   'ecdsaSignMessageHashExample' : ActorMethod<
@@ -20,6 +53,11 @@ export interface _SERVICE {
     Result
   >,
   'vetkdPublicKeyExample' : ActorMethod<[string, string], Result>,
+  'wallet_networks' : ActorMethod<[], Array<WalletNetworkInfo>>,
+  'wallet_overview' : ActorMethod<
+    [string, [] | [string], [] | [string]],
+    WalletOverviewResult
+  >,
 }
 export declare const idlFactory: IDL.InterfaceFactory;
 export declare const init: (args: { IDL: typeof IDL }) => IDL.Type[];

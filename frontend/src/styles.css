@@ -285,6 +285,7 @@ body::after {
 }
 
 input,
+select,
 textarea {
   width: 100%;
   border-radius: 12px;
@@ -302,6 +303,7 @@ textarea {
 }
 
 input:focus,
+select:focus,
 textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(91, 255, 190, 0.18);

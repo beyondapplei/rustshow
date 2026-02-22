@@ -5,6 +5,7 @@
 当前功能：
 - `VetKeys 私密消息`：A 登录后给 B principal 加密；B 登录后解密。
 - `Threshold ECDSA (ETH 验签)`：A 登录后做链上 Threshold ECDSA(secp256k1) 签名；B 仅用 `ETH 地址 + 原文 + 签名` 在前端本地验证。
+- `II 多链钱包（演示）`：钱包首页 UI + 链切换 + 钱包总览；当前优先接入 EVM 链公钥读取与地址推导。
 
 ## 前端界面说明
 
@@ -65,6 +66,32 @@
 - `ecdsa_public_key_for_caller_hex()`
 - `ecdsa_sign_hash_hex_for_caller(message_hash_hex)`
 
+## 功能 3：II 多链钱包（演示）
+
+流程（当前版本）：
+1. 进入 `II 多链钱包（演示）` 功能页。
+2. 使用 II 登录。
+3. 调用 `wallet_networks` 获取支持链列表。
+4. 选择链并调用 `wallet_overview` 获取钱包总览。
+5. 对于 EVM 链（`eth / sepolia / base`），前端根据后端返回的 secp256k1 公钥推导 ETH 地址。
+
+当前已接入：
+- 钱包网络列表（多链静态配置）
+- 钱包总览结构（caller、链信息、主资产占位、公钥材料）
+- EVM 链链钥公钥读取（ETH / Sepolia / Base）
+- 前端 ETH 地址推导（由压缩 secp256k1 公钥推导）
+
+当前未接入（占位）：
+- 实时余额查询
+- 多资产列表
+- 发送/转账流程
+- 非 EVM 链地址生成与签名/转账
+
+后端实现说明（Rust）：
+- 新增 `wallet_app.rs`，提供 `wallet_networks / wallet_overview`。
+- `wallet_overview` 当前返回 `WalletOverviewResult`（`Ok WalletOverviewOut | Err text`）。
+- EVM 公钥读取优先尝试本地 key `dfx_test_key`，失败后回退 `test_key_1`。
+
 ## 当前后端接口（Candid）
 
 `backend/backend.did` 当前包含：
@@ -77,8 +104,15 @@
 - `ibe_decryption_key_for_caller_hex(text) -> Result`
 - `ecdsa_public_key_for_caller_hex() -> Result`
 - `ecdsa_sign_hash_hex_for_caller(text) -> Result`
+- `wallet_networks() -> vec WalletNetworkInfo`（query）
+- `wallet_overview(text, opt text, opt text) -> WalletOverviewResult`
 
 其中 `Result = variant { Ok : text; Err : text }`
+
+钱包类型（简化）：
+- `WalletNetworkInfo`：链 id/kind/name/主资产符号/能力标记/默认 RPC
+- `WalletOverviewOut`：caller、selectedNetwork、primaryAmount、evmAddress、evmPublicKeyHex、balances
+- `WalletOverviewResult = variant { Ok : WalletOverviewOut; Err : text }`
 
 ## 声明文件与开发说明
 

@@ -13,3 +13,4 @@ path = "lib.rs"
 candid = "0.10.10"
 ic-cdk = "0.18.3"
 ic-stable-structures = "0.6.7"
+serde = { version = "1", features = ["derive"] }
